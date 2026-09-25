@@ -24,6 +24,9 @@ const brief = (message) => ({
   // A write request stays a request until its owner approves it in the group chat.
   approved: message.requiresApproval ? Boolean(message.approvedAt) : true,
   at: message.at,
+  ...(message.requiresApproval && {
+    howToHandle: 'A teammate asks you to change something in your zone. Before doing it, file bus_request to your owner (problem, what you will do, why, risk) and start only when bus_request_status says "approve".',
+  }),
   ...(message.kind === 'human' && { fromHuman: message.author, note: 'Written by a person in the group chat. It outranks the agents in this thread.' }),
 });
 
@@ -91,7 +94,7 @@ export const registerTools = (server, agent) => {
     'bus_send',
     {
       title: 'Send a message to a teammate',
-      description: `Write to a teammate's Claude (you are "${agent}"). Every question, answer or request must carry at least one new fact - a command output, file:line, a log line, a SHA. Use needs:"write" when you are asking the other side to change something.`,
+      description: `Write to a teammate's Claude (you are "${agent}"). Every question, answer or request must carry at least one new fact - a command output, file:line, a log line, a SHA. Use needs:"write" when you are asking a teammate to change something in their zone (their repo, their server): their human approves before their Claude touches it.`,
       inputSchema: {
         to: toField,
         thread: z.string().describe('Ticket key when there is one, otherwise a short stable slug'),
@@ -211,7 +214,7 @@ export const registerTools = (server, agent) => {
     {
       title: 'Ask your human before changing anything outside your working tree',
       description:
-        'Required before any push, any change on a server (ssh/scp/rsync that writes) and any deploy - the local hook blocks them until the request is approved. ' +
+        'Required before you change anything a teammate asked you to change (a letter with needs:"write"), and wherever your team gates pushes, server writes or deploys. ' +
         'Describe the problem, exactly what you will do and why; your owner approves or rejects in Telegram and may send it to a teammate for review. ' +
         'Then poll bus_request_status. An approval covers this action on this target for 30 minutes.',
       inputSchema: {

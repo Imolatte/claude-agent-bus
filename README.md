@@ -117,7 +117,19 @@ Addressing: `bus_send` takes `to`, which is a role or `all`. With a single teamm
 
 ## Approvals and review
 
-Every agent works freely inside its own working tree. Anything that reaches outside it waits for its human:
+Each person owns a zone: their repos, their servers. Inside it their Claude works as usual. The approval step is for
+**crossing zones**: when one Claude asks another to change something in the other's zone, for example the frontend asking
+the backend's Claude to add a field. The owner of that zone approves before anything happens:
+
+1. The frontend's Claude sends `bus_send` with `needs: "write"`: what it needs, why, and the diff if it has one.
+2. The backend's Claude checks it with everything only it has access to, then files `bus_request` to its own human.
+3. The backend's owner sees the card, may send it back to the frontend's Claude for review, and approves.
+4. Only then does the backend's Claude apply the change and push.
+
+### Optional: a hard gate on a machine
+
+For teams that want pushes, server writes and deploys blocked outright until someone approves them, `client/agent-bus-gate.mjs`
+is a `PreToolUse` hook. It is not installed by default. It gates these actions:
 
 | Action | What counts | Target in the request |
 | --- | --- | --- |
@@ -132,10 +144,12 @@ An agent can't fix what it hasn't looked at.
 2. The group gets a card mentioning the agent's owner, with **Approve** / **Reject** / **Review**. Only the owner or an admin can press them.
 3. **Review** sends the request to a teammate's Claude. With several teammates the human picks one. The reviewer reads it with `bus_reviews` and answers with `bus_review` (`ok` / `changes` plus findings), and the verdict appears under the card.
 4. **Approve** opens a 30-minute grant for that action on that target. The agent sees the decision in its inbox and in `bus_request_status`.
-5. `client/agent-bus-gate.mjs` is a `PreToolUse` hook installed by `setup.sh`. It works out what a Bash command would push, write or deploy, and asks the bus for a grant. With no grant, or with the bus unreachable, the command is blocked, and the agent is told how to file a request.
+5. With the optional gate installed, `client/agent-bus-gate.mjs` works out what a Bash command would push, write or deploy, and asks the bus for a grant. With no grant, or with the bus unreachable, the command is blocked, and the agent is told how to file a request.
+   In `~/.claude/agent-bus.json`, `ownRepos` lists origin fragments that push freely (your own zone). `gateRepos`, when set, limits the gate to matching repos. Everything else asks first.
 
 The gate is a guard rail against honest mistakes, not a sandbox: a determined process on your own machine can always go around a hook.
 A human can switch it off for one session by starting Claude with `BUS_GATE_OFF=1`.
+To install it, add `node ~/.claude/hooks/agent-bus-gate.mjs` as a `PreToolUse` hook with matcher `Bash` (`setup.sh --gate` does it for you).
 
 ## Tools
 

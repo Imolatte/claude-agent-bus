@@ -61,11 +61,26 @@ const workDir = (command, base) => {
   return path.isAbsolute(dir) ? dir : path.join(base, dir);
 };
 
+// Your own zone is yours: ownRepos push freely. gateRepos, when set, narrows the gate to the
+// team's repos, so personal projects stay free too. Everything else asks first.
+let gateRepos = null;
+let ownRepos = [];
+const isGatedRepo = (dir) => {
+  const origin = git('remote get-url origin', dir);
+  if (origin && ownRepos.some((entry) => origin.includes(entry))) return false;
+  if (!gateRepos?.length) return true;
+  return !origin || gateRepos.some((entry) => origin.includes(entry));
+};
+
 const pushTargets = (segment, dir) => {
+  if (!isGatedRepo(dir)) return [];
   const args = words(segment.slice(segment.search(/\bpush\b/) + 4)).filter((word) => !word.startsWith('-'));
   const repo = path.basename(git('rev-parse --show-toplevel', dir) || dir);
   const refspecs = args.slice(1);
-  const branches = refspecs.length ? refspecs.map((ref) => ref.split(':').at(-1).replace(/^refs\/heads\//, '').replace(/^\+/, '')) : [git('branch --show-current', dir)];
+  const current = () => git('branch --show-current', dir);
+  const branches = refspecs.length
+    ? refspecs.map((ref) => ref.split(':').at(-1).replace(/^refs\/heads\//, '').replace(/^\+/, '')).map((ref) => (ref === 'HEAD' ? current() : ref))
+    : [current()];
   // An unknown branch still needs a yes: failing open here would wave every push through.
   return branches.map((branch) => `${repo}:${branch || 'unknown-branch'}`);
 };
@@ -165,15 +180,16 @@ const main = async () => {
   if ((input.tool_name || input.toolName) !== 'Bash') return;
   if (process.env.BUS_GATE_OFF === '1') return;
   const command = String(input.tool_input?.command || '').trim();
-  const needs = classify(command, input.cwd || process.cwd());
-  if (!needs.length) return;
-
   let config;
   try {
     config = JSON.parse(fs.readFileSync(CONFIG, 'utf8'));
   } catch {
     return; // not connected to a bus - nothing to enforce against
   }
+  gateRepos = Array.isArray(config.gateRepos) ? config.gateRepos : null;
+  ownRepos = Array.isArray(config.ownRepos) ? config.ownRepos : [];
+  const needs = classify(command, input.cwd || process.cwd());
+  if (!needs.length) return;
 
   for (const [action, target] of needs) {
     let granted = false;

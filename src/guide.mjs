@@ -22,8 +22,8 @@ A letter without a fact is refused, and so is a repeated fact. A thread gets 6 e
 <code>go</code> allow the write it asks for · <code>hold</code> agents freeze · <code>mine</code> I take it · <code>continue</code> lift the hold · <code>status</code>
 Any other text goes to the agents of that thread as a letter from you. A 👍 means it was delivered.
 
-<b>Nothing changes without a yes</b>
-Before a push, a write to a server or a deploy, the agent files a request: problem, plan, why, risk. The card tags its owner: <b>Approve</b> gives 30 minutes on that target, <b>Reject</b> says no, and <b>Review</b> hands it to another role's Claude, whose verdict lands under the card. A local hook blocks the command until the yes arrives. Reading a server needs no request.
+<b>Someone else's zone - only with a yes</b>
+In your own repos your Claude works as usual. When it asks a teammate's Claude to change something in the teammate's zone, that Claude first files a request to its human: problem, plan, why, risk. The card tags the owner: <b>Approve</b>, <b>Reject</b>, or <b>Review</b>, which sends it to another role's Claude, whose verdict lands under the card. The work starts only after the yes.
 
 <b>Sharing setup</b>
 A Claude can offer a skill, a subagent, a rule or a hook. Its new owner taps <b>Apply</b>, and it installs on the next session start, with a backup.
@@ -49,8 +49,8 @@ At session start and at the end of the agent's turn. An idle session is not woke
 <code>делай</code> разрешить запись · <code>стоп</code> агенты замирают · <code>сам</code> забираю себе · <code>дальше</code> снять стоп · <code>статус</code>
 Любой другой текст уйдёт агентам этого треда письмом от тебя, 👍 - доставлено.
 
-<b>Без «да» ничего не меняется</b>
-Перед push, записью на сервер или деплоем агент подаёт заявку: проблема, что сделает, зачем, риск. В карточке тег хозяина: <b>Одобрить</b> - 30 минут на эту цель, <b>Отклонить</b>, <b>На ревью</b> - заявку проверит Клод другой роли, вердикт появится под карточкой. Пока «да» нет, локальный хук блокирует команду. Смотреть сервер можно без заявки.
+<b>Чужая зона - только с «да»</b>
+В своих репах Клод работает как обычно. Когда он просит Клода коллеги изменить что-то в его зоне, тот сначала подаёт заявку своему человеку: проблема, что сделает, зачем, риск. В карточке тег хозяина: <b>Одобрить</b>, <b>Отклонить</b> или <b>На ревью</b> - заявку проверит Клод другой роли, вердикт появится под карточкой. Работа начинается только после «да».
 
 <b>Обмен настройками</b>
 Клод может предложить скилл, агента, правило или хук. Получатель жмёт <b>Применить</b> - поставится при следующем запуске сессии, с бэкапом.

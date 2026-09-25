@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Usage: BUS_HOST=user@your-server ./setup.sh <your-bus-token>
 #        BUS_HOST=user@your-server ./setup.sh --invite <code-from-the-group-chat>
+#        add --gate first to also install the hard approval gate for pushes, server writes and deploys
 # Connects this machine's Claude Code to agent-bus and installs the inbox hook.
 set -euo pipefail
 
+GATE=""
+if [ "${1:-}" = "--gate" ]; then GATE=1; shift; fi
 INVITE=""
 if [ "${1:-}" = "--invite" ]; then
   INVITE="${2:?usage: setup.sh --invite <code>}"
@@ -41,7 +44,7 @@ chmod 600 "$HOME/.claude/agent-bus.json"
 claude mcp add --transport http agent-bus "$BUS_URL/mcp" \
   --header "Authorization: Bearer $TOKEN" --scope user
 
-python3 - "$NODE_BIN" <<'PY'
+python3 - "$NODE_BIN" "$GATE" <<'PY'
 import json, os, shutil, sys
 node = sys.argv[1]
 path = os.path.expanduser('~/.claude/settings.json')
@@ -57,11 +60,12 @@ for event in ('Stop', 'SessionStart'):
     if any('agent-bus-ping' in h.get('command', '') for g in groups for h in g.get('hooks', [])):
         continue
     groups.append({'hooks': [{'type': 'command', 'command': command}]})
-# Pushes, server writes and deploys wait for an approved request.
-gate = f"{node} {os.path.expanduser('~/.claude/hooks/agent-bus-gate.mjs')}"
-pre = hooks.setdefault('PreToolUse', [])
-if not any('agent-bus-gate' in h.get('command', '') for g in pre for h in g.get('hooks', [])):
-    pre.append({'matcher': 'Bash', 'hooks': [{'type': 'command', 'command': gate}]})
+# Optional hard gate (--gate): pushes, server writes and deploys wait for an approved request.
+if len(sys.argv) > 2 and sys.argv[2] == '1':
+    gate = f"{node} {os.path.expanduser('~/.claude/hooks/agent-bus-gate.mjs')}"
+    pre = hooks.setdefault('PreToolUse', [])
+    if not any('agent-bus-gate' in h.get('command', '') for g in pre for h in g.get('hooks', [])):
+        pre.append({'matcher': 'Bash', 'hooks': [{'type': 'command', 'command': gate}]})
 json.dump(data, open(path, 'w'), ensure_ascii=False, indent=2)
 print('hooks registered')
 PY
