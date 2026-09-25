@@ -1,5 +1,6 @@
 import { config, newId } from './config.mjs';
-import { append, getMessage, getProposal, lastThread, mirrorTarget, threadState } from './store.mjs';
+import { append, getMessage, getProposal, getRequest, lastThread, mirrorTarget, threadState } from './store.mjs';
+import { askReview, decide } from './requests.mjs';
 import { notify } from './notify.mjs';
 import { t } from './i18n.mjs';
 import { answerCallback, markDecided } from './proposals.mjs';
@@ -151,7 +152,27 @@ const relayHumanReply = async (message) => {
   await api('setMessageReaction', { chat_id: message.chat.id, message_id: message.message_id, reaction: [{ type: 'emoji', emoji: '👍' }] }).catch(() => {});
 };
 
+const handleRequestTap = async (query) => {
+  const [, verb, id, reviewer] = String(query.data || '').split(':');
+  const request = getRequest(id);
+  if (!request) return answerCallback(query.id, t.noSuchProposal);
+  const tapper = String(query.from?.id);
+  if (tapper !== String(ownerOf(request.from)) && !isAdmin(tapper)) return answerCallback(query.id, t.notRequestOwner);
+  const who = query.from?.username || query.from?.first_name || 'someone';
+  if (verb === 'review' || verb === 'reviewer') {
+    await answerCallback(query.id, '🔍');
+    return askReview(request, who, reviewer || null);
+  }
+  if (request.status !== 'pending') return answerCallback(query.id, t.alreadyDecided);
+  await answerCallback(query.id, verb === 'approve' ? '✅' : '✖️');
+  return decide(request, verb, who);
+};
+
 const handle = async (update) => {
+  if (update.callback_query?.data?.startsWith('req:')) {
+    if (String(update.callback_query.message?.chat?.id) === String(config.telegram.chat)) await handleRequestTap(update.callback_query);
+    return;
+  }
   if (update.callback_query?.data?.startsWith('prop:')) {
     if (String(update.callback_query.message?.chat?.id) === String(config.telegram.chat)) await handleProposalTap(update.callback_query);
     return;

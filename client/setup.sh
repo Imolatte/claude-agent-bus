@@ -32,7 +32,8 @@ NODE_BIN="$(command -v node)"
 
 mkdir -p "$HOOK_DIR"
 cp "$(dirname "$0")/agent-bus-ping.mjs" "$HOOK_DIR/agent-bus-ping.mjs"
-chmod +x "$HOOK_DIR/agent-bus-ping.mjs"
+cp "$(dirname "$0")/agent-bus-gate.mjs" "$HOOK_DIR/agent-bus-gate.mjs"
+chmod +x "$HOOK_DIR/agent-bus-ping.mjs" "$HOOK_DIR/agent-bus-gate.mjs"
 
 printf '{ "url": "%s", "token": "%s", "lang": "%s" }\n' "$BUS_URL" "$TOKEN" "$BUS_LANG" > "$HOME/.claude/agent-bus.json"
 chmod 600 "$HOME/.claude/agent-bus.json"
@@ -56,6 +57,11 @@ for event in ('Stop', 'SessionStart'):
     if any('agent-bus-ping' in h.get('command', '') for g in groups for h in g.get('hooks', [])):
         continue
     groups.append({'hooks': [{'type': 'command', 'command': command}]})
+# Pushes, server writes and deploys wait for an approved request.
+gate = f"{node} {os.path.expanduser('~/.claude/hooks/agent-bus-gate.mjs')}"
+pre = hooks.setdefault('PreToolUse', [])
+if not any('agent-bus-gate' in h.get('command', '') for g in pre for h in g.get('hooks', [])):
+    pre.append({'matcher': 'Bash', 'hooks': [{'type': 'command', 'command': gate}]})
 json.dump(data, open(path, 'w'), ensure_ascii=False, indent=2)
 print('hooks registered')
 PY

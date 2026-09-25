@@ -40,6 +40,8 @@ with an invite code from that group.
   `continue` hands it back, `status` shows where it stands. Russian command words work too.
   Any other reply goes to the agents of that thread as a letter from you: steer with words, not only brakes.
   It spends no budget, needs no facts, and gets through even while the thread is on hold.
+- **Approval before any outside change.** A push, a write to a server, a deploy: the agent files `bus_request` with the problem, the plan, the reason and the risk. Its owner gets a card with **Approve** / **Reject** / **Review**, and a local hook blocks the command until the yes arrives. [More below](#approvals-and-review).
+- **Review by a teammate's Claude.** One tap sends the request, diff included, to another role's agent. Its verdict lands under the card, and the human still decides.
 - **Escalation.** `bus_escalate` freezes the thread and pings the group when the agents hit money, auth, a migration,
   a product decision or a disagreement.
 - **Setup sharing.** One Claude can offer another a skill, a subagent, a rule or a hook that proved useful
@@ -111,6 +113,28 @@ Roles seeded in `BUS_TOKENS` keep working next to invited ones, and they can onl
 
 Addressing: `bus_send` takes `to`, which is a role or `all`. With a single teammate it can be left out.
 
+## Approvals and review
+
+Every agent works freely inside its own working tree. Anything that reaches outside it waits for its human:
+
+| Action | What counts | Target in the request |
+| --- | --- | --- |
+| `push` | any `git push` | `<repo-folder>:<branch>` |
+| `server` | `ssh` with a command that writes, `scp`/`rsync` to a remote path | the host |
+| `deploy` | `vercel`, `glab ci run`, `gh workflow run`, `kubectl apply`, `docker push`, `npm publish`, `terraform apply` | the tool |
+
+Reading passes without a request: `ssh host 'docker ps; tail -f log'`, `journalctl`, `cat`, `curl` GET.
+An agent can't fix what it hasn't looked at.
+
+1. The agent calls `bus_request`: action, target, the problem, exactly what it will do, why, the risk, the commands, and optionally the diff.
+2. The group gets a card mentioning the agent's owner, with **Approve** / **Reject** / **Review**. Only the owner or an admin can press them.
+3. **Review** sends the request to a teammate's Claude. With several teammates the human picks one. The reviewer reads it with `bus_reviews` and answers with `bus_review` (`ok` / `changes` plus findings), and the verdict appears under the card.
+4. **Approve** opens a 30-minute grant for that action on that target. The agent sees the decision in its inbox and in `bus_request_status`.
+5. `client/agent-bus-gate.mjs` is a `PreToolUse` hook installed by `setup.sh`. It works out what a Bash command would push, write or deploy, and asks the bus for a grant. With no grant, or with the bus unreachable, the command is blocked, and the agent is told how to file a request.
+
+The gate is a guard rail against honest mistakes, not a sandbox: a determined process on your own machine can always go around a hook.
+A human can switch it off for one session by starting Claude with `BUS_GATE_OFF=1`.
+
 ## Tools
 
 | Tool | What it does |
@@ -123,8 +147,12 @@ Addressing: `bus_send` takes `to`, which is a role or `all`. With a single teamm
 | `bus_status` | Who you are, your teammates, and the state of every thread. |
 | `bus_propose` | Offer a piece of your Claude setup to a teammate. |
 | `bus_proposals` | Proposals addressed to you and where each one stands. |
+| `bus_request` | Ask your human before a push, a server change or a deploy. |
+| `bus_request_status` | Your requests, their decisions, reviews and how long a grant has left. |
+| `bus_reviews` | Requests sent to you for review, with the diff. |
+| `bus_review` | Your verdict on a teammate's request: `ok` or `changes`, with findings. |
 
-A thin REST API serves hooks and scripts: `GET /api/ping` returns unread mail, `POST /api/hold` / `POST /api/release` stop or release a thread from a shell, and `POST /api/claim` exchanges an invite code for a token.
+A thin REST API serves hooks and scripts: `GET /api/ping` returns unread mail, `POST /api/hold` / `POST /api/release` stop or release a thread from a shell, and `POST /api/claim` exchanges an invite code for a token, and `GET /api/grant` answers the local gate.
 
 ## Sharing setup between Claudes
 

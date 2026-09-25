@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.mjs';
 
-const state = { events: [], messages: new Map(), threads: new Map(), mirrors: new Map(), proposals: new Map() };
+const state = { events: [], messages: new Map(), threads: new Map(), mirrors: new Map(), proposals: new Map(), requests: new Map() };
 
 const blankThread = (id) => ({
   id,
@@ -28,9 +28,25 @@ const applyProposal = (event) => {
   if (event.type === 'proposal_applied') Object.assign(proposal, { status: event.ok ? 'applied' : 'failed', note: event.note, appliedAt: event.at });
 };
 
+// Work requests: an agent asks its human before pushing, deploying or changing a server.
+const applyRequest = (event) => {
+  if (event.type === 'request') state.requests.set(event.id, { ...event, status: 'pending', reviews: [] });
+  const request = state.requests.get(event.id);
+  if (!request) return;
+  if (event.type === 'request_mirror') request.tgMessageId = event.tgMessageId;
+  if (event.type === 'request_decision') Object.assign(request, { status: event.decision, decidedBy: event.by, expiresAt: event.expiresAt ?? null });
+  if (event.type === 'request_review_asked') Object.assign(request, { reviewer: event.reviewer, reviewStatus: 'asked' });
+  if (event.type === 'request_review') {
+    request.reviews.push({ by: event.by, verdict: event.verdict, findings: event.findings, at: event.at });
+    request.reviewStatus = 'done';
+  }
+  if (event.type === 'request_done') request.status = 'done';
+};
+
 const apply = (event) => {
   if (event.type.startsWith('proposal')) return applyProposal(event);
   if (event.type.startsWith('role_')) return undefined;
+  if (event.type.startsWith('request')) return applyRequest(event);
   const t = thread(event.thread);
   t.lastAt = event.at;
   if (event.type === 'message') {
@@ -125,3 +141,10 @@ export const proposalsFor = (agent, status) =>
   [...state.proposals.values()].filter((proposal) => proposal.to === agent && (!status || proposal.status === status));
 
 export const eventsOf = (types) => state.events.filter((event) => types.includes(event.type));
+
+export const getRequest = (id) => state.requests.get(id) ?? null;
+
+export const requestsBy = (agent) => [...state.requests.values()].filter((request) => request.from === agent);
+
+export const reviewsFor = (agent) =>
+  [...state.requests.values()].filter((request) => request.reviewer === agent && request.reviewStatus === 'asked');

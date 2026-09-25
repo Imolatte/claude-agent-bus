@@ -5,6 +5,7 @@ import { config } from './config.mjs';
 import { agentFromToken, claim } from './roles.mjs';
 import { append, getProposal, inbox, init, openThreads, proposalsFor } from './store.mjs';
 import { validateProposal } from './proposals.mjs';
+import { findGrant } from './requests.mjs';
 import { registerTools } from './tools.mjs';
 import { notify } from './notify.mjs';
 import { t } from './i18n.mjs';
@@ -82,6 +83,12 @@ app.post('/api/proposals/:id/applied', auth, (req, res) => {
   const { ok = true, note = '' } = req.body || {};
   append({ type: 'proposal_applied', id: proposal.id, ok: Boolean(ok), note });
   return res.json({ recorded: proposal.id });
+});
+
+// The local hook asks here before letting a push, a server change or a deploy through.
+app.get('/api/grant', auth, (req, res) => {
+  const grant = findGrant(req.agent, String(req.query.action || ''), String(req.query.target || ''));
+  res.json(grant ? { granted: true, id: grant.id, expiresAt: grant.expiresAt } : { granted: false });
 });
 
 const loaded = init();

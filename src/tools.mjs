@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { config, newId } from './config.mjs';
 import { defaultRecipient, EVERYONE, ownerOf, teammates } from './roles.mjs';
-import { append, getMessage, inbox, listThread, markRead, openThreads, proposalsFor, threadState } from './store.mjs';
+import { append, getMessage, inbox, listThread, markRead, openThreads, proposalsFor, requestsBy, reviewsFor, threadState } from './store.mjs';
 import { announce, validateProposal } from './proposals.mjs';
+import { ACTIONS, createRequest, submitReview, validateRequest } from './requests.mjs';
 import { KINDS, validateSend } from './rules.mjs';
 import { mirrorId, notify } from './notify.mjs';
 import { t } from './i18n.mjs';
@@ -203,6 +204,65 @@ export const registerTools = (server, agent) => {
     },
     async () =>
       text(proposalsFor(agent).map(({ id, from, title, status, files }) => ({ id, from, title, status, files: files.map((file) => file.path) }))),
+  );
+
+  server.registerTool(
+    'bus_request',
+    {
+      title: 'Ask your human before changing anything outside your working tree',
+      description:
+        'Required before any push, any change on a server (ssh/scp/rsync that writes) and any deploy - the local hook blocks them until the request is approved. ' +
+        'Describe the problem, exactly what you will do and why; your owner approves or rejects in Telegram and may send it to a teammate for review. ' +
+        'Then poll bus_request_status. An approval covers this action on this target for 30 minutes.',
+      inputSchema: {
+        action: z.enum(ACTIONS),
+        target: z.string().describe('push: "<repo-folder>:<branch>", server: the host, deploy: the environment'),
+        problem: z.string(),
+        plan: z.string().describe('What exactly you will do'),
+        why: z.string(),
+        risk: z.string().default('').describe('What could break and how to roll back'),
+        commands: z.array(z.string()).default([]).describe('The commands you intend to run'),
+        diff: z.string().default('').describe('The change itself, for a reviewer'),
+      },
+    },
+    async (input) => {
+      const problem = validateRequest(input);
+      if (problem) return fail({ rejected: 'bad_request', message: problem });
+      const request = await createRequest(agent, input);
+      return text({ requested: request.id, note: 'Waiting for your human in Telegram. Check with bus_request_status; do not run the action before it is approved.' });
+    },
+  );
+
+  server.registerTool(
+    'bus_request_status',
+    { title: 'Where your requests stand', description: 'Your work requests: pending, approve, reject, done - plus any review.', inputSchema: {} },
+    async () =>
+      text(
+        requestsBy(agent).slice(-10).map(({ id, action, target, status, expiresAt, reviews }) => ({
+          id, action, target, status,
+          validFor: status === 'approve' && expiresAt ? `${Math.max(0, Math.round((expiresAt - Date.now()) / 60000))} min` : undefined,
+          reviews,
+        })),
+      ),
+  );
+
+  server.registerTool(
+    'bus_reviews',
+    { title: 'Reviews waiting for you', description: "Teammates' requests their human sent to you for review, with the diff.", inputSchema: {} },
+    async () => text(reviewsFor(agent).map(({ id, from, action, target, problem, plan, why, risk, commands, diff }) => ({ id, from, action, target, problem, plan, why, risk, commands, diff }))),
+  );
+
+  server.registerTool(
+    'bus_review',
+    {
+      title: "Answer a review request",
+      description: 'Your verdict on a teammate\'s request goes straight to the humans in Telegram. Be concrete: file:line, what breaks, what to change.',
+      inputSchema: { id: z.string(), verdict: z.enum(['ok', 'changes']), findings: z.string() },
+    },
+    async ({ id, verdict, findings }) => {
+      const problem = await submitReview(agent, id, verdict, findings);
+      return problem ? fail({ rejected: 'not_your_review', message: problem }) : text({ reviewed: id });
+    },
   );
 
   server.registerTool(
