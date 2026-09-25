@@ -107,18 +107,55 @@ const DEPLOY = [
   [/\bterraform\s+(apply|destroy)\b/, 'terraform'],
 ];
 
+// Heredoc bodies are data fed to a program, not commands - a note that mentions a push is not a push.
+const dropHeredocs = (command) =>
+  command.replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g, (match) => match.split('\n')[0]);
+
+// Split on ; && || and newlines, but never inside quotes: `ssh host 'ls; rm x'` is one command.
+const splitTop = (command) => {
+  const parts = [];
+  let current = '';
+  let quote = null;
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index];
+    const pair = command.slice(index, index + 2);
+    if (quote) {
+      if (char === quote) quote = null;
+      current += char;
+    } else if (char === "'" || char === '"') {
+      quote = char;
+      current += char;
+    } else if (pair === '&&' || pair === '||') {
+      parts.push(current);
+      current = '';
+      index += 1;
+    } else if (char === ';' || char === '\n') {
+      parts.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  parts.push(current);
+  return parts;
+};
+
+// Quoted text is an argument, except the remote command of ssh, which serverTarget reads itself.
+const unquoted = (segment) => segment.replace(/'[^']*'/g, "''").replace(/"[^"]*"/g, '""');
+
 // Every action this command would take that needs a human's yes, as [action, target].
 export const classify = (command, base) => {
   const dir = workDir(command, base);
   const needs = [];
-  for (const raw of command.split(/&&|\|\||;|\n/)) {
+  for (const raw of splitTop(dropHeredocs(command))) {
     const segment = raw.trim().replace(/^(\w+=\S+\s+)+/, '');
-    if (/\bgit\b.*\bpush\b/.test(segment) && !/\bstash\s+push\b/.test(segment)) for (const target of pushTargets(segment, dir)) needs.push(['push', target]);
+    const bare = unquoted(segment);
+    if (/\bgit\b.*\bpush\b/.test(bare) && !/\bstash\s+push\b/.test(bare)) for (const target of pushTargets(segment, dir)) needs.push(['push', target]);
     if (/^(ssh|scp|rsync)\b/.test(segment)) {
       const host = serverTarget(segment);
       if (host) needs.push(['server', host]);
     }
-    for (const [rule, target] of DEPLOY) if (rule.test(segment)) needs.push(['deploy', target]);
+    for (const [rule, target] of DEPLOY) if (rule.test(bare)) needs.push(['deploy', target]);
   }
   return needs;
 };
