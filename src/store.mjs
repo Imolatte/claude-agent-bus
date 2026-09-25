@@ -35,8 +35,11 @@ const apply = (event) => {
   t.lastAt = event.at;
   if (event.type === 'message') {
     state.messages.set(event.id, event);
-    t.hops += 1;
-    t.participants.add(event.from);
+    // A human stepping in is steering, not an exchange: it spends no budget.
+    if (event.kind !== 'human') {
+      t.hops += 1;
+      t.participants.add(event.from);
+    }
   }
   // Per reader, because a letter to everyone is read by each teammate separately.
   if (event.type === 'read' || event.type === 'ack') {

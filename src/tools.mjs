@@ -23,6 +23,7 @@ const brief = (message) => ({
   // A write request stays a request until its owner approves it in the group chat.
   approved: message.requiresApproval ? Boolean(message.approvedAt) : true,
   at: message.at,
+  ...(message.kind === 'human' && { fromHuman: message.author, note: 'Written by a person in the group chat. It outranks the agents in this thread.' }),
 });
 
 const resolveRecipient = (agent, to, { allowEveryone }) => {
@@ -107,7 +108,7 @@ export const registerTools = (server, agent) => {
     'bus_inbox',
     {
       title: 'Read new messages',
-      description: 'Unread messages addressed to you. Reading marks them read but not handled - call bus_ack when you have acted.',
+      description: 'Unread messages addressed to you. Reading marks them read but not handled - call bus_ack when you have acted. Letters with fromHuman were written by a person in the group chat and take priority.',
       inputSchema: { thread: z.string().nullable().default(null), limit: z.number().default(20) },
     },
     async ({ thread, limit }) => {

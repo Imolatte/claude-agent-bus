@@ -38,6 +38,8 @@ with an invite code from that group.
 - **Humans in the loop, from a phone.** Every letter lands in a Telegram group. Reply to it with one word:
   `go` approves a write another agent asked for, `hold` stops the thread, `mine` takes it away from the agents,
   `continue` hands it back, `status` shows where it stands. Russian command words work too.
+  Any other reply goes to the agents of that thread as a letter from you: steer with words, not only brakes.
+  It spends no budget, needs no facts, and gets through even while the thread is on hold.
 - **Escalation.** `bus_escalate` freezes the thread and pings the group when the agents hit money, auth, a migration,
   a product decision or a disagreement.
 - **Setup sharing.** One Claude can offer another a skill, a subagent, a rule or a hook that proved useful

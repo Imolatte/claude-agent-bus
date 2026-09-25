@@ -1,4 +1,4 @@
-import { config } from './config.mjs';
+import { config, newId } from './config.mjs';
 import { append, getMessage, getProposal, lastThread, mirrorTarget, threadState } from './store.mjs';
 import { notify } from './notify.mjs';
 import { t } from './i18n.mjs';
@@ -136,6 +136,21 @@ const handleRoleCommand = async (message) => {
   return true;
 };
 
+// Free text in reply to a mirrored letter goes to the agents of that thread as a letter from
+// the person - so humans can steer with words, not only stop and start.
+const relayHumanReply = async (message) => {
+  const target = mirrorTarget(message.reply_to_message?.message_id);
+  if (!target) return;
+  const letter = getMessage(target.id);
+  const recipients = letter?.to === 'all' ? ['all'] : [...new Set([letter?.from, letter?.to].filter(Boolean))];
+  if (!recipients.length) return;
+  const author = message.from?.username || message.from?.first_name || 'someone';
+  for (const to of recipients) {
+    append({ type: 'message', id: newId('msg'), thread: target.thread, kind: 'human', from: 'human', author, to, subject: t.humanSubject(author), body: message.text, facts: [] });
+  }
+  await api('setMessageReaction', { chat_id: message.chat.id, message_id: message.message_id, reaction: [{ type: 'emoji', emoji: '👍' }] }).catch(() => {});
+};
+
 const handle = async (update) => {
   if (update.callback_query?.data?.startsWith('prop:')) {
     if (String(update.callback_query.message?.chat?.id) === String(config.telegram.chat)) await handleProposalTap(update.callback_query);
@@ -152,7 +167,7 @@ const handle = async (update) => {
   }
   if (await handleRoleCommand(message)) return;
   const command = parse(message.text);
-  if (!command) return;
+  if (!command) return relayHumanReply(message);
   const who = message.from?.username || message.from?.first_name || 'someone';
   const target = resolveTarget(update, command.rest);
   if (!target) {
@@ -187,3 +202,6 @@ export const startTelegram = () => {
   loop();
   return { polling: true, stop: () => { stopped = true; } };
 };
+
+// Test seam: feed a Telegram update without polling.
+export const handleUpdate = (update) => handle(update);

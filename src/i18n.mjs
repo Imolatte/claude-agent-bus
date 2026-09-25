@@ -4,6 +4,7 @@ import { roleLabel } from './roles.mjs';
 const STRINGS = {
   en: {
     everyone: '👥 everyone',
+    humanSubject: (who) => `From ${who} in the group chat`,
     kind: { question: 'question', answer: 'answer', request: 'request', fyi: 'fyi', escalation: '🚨 escalation' },
     needsApproval: '⚠ <b>needs approval</b> - reply «go»',
     budgetSpent: (thread, why) => `⏳ Thread ${thread}: ${why}. Only an escalation is left.`,
@@ -47,6 +48,7 @@ const STRINGS = {
   },
   ru: {
     everyone: '👥 всем',
+    humanSubject: (who) => `От ${who} из группы`,
     kind: { question: 'вопрос', answer: 'ответ', request: 'просьба', fyi: 'к сведению', escalation: '🚨 эскалация' },
     needsApproval: '⚠ <b>нужно согласие</b> - ответь «делай»',
     budgetSpent: (thread, why) => `⏳ Тред ${thread}: ${why}. Осталась только эскалация.`,
