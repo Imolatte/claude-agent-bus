@@ -74,7 +74,8 @@ The token *is* the identity: an agent can't send as another one.
 1. Create a bot with [@BotFather](https://t.me/BotFather) and put its token in `BUS_TG_TOKEN`.
 2. Create a group, add the bot and the team. Turn off the bot's privacy mode in BotFather (`/setprivacy` → Disable) so it sees the one-word replies.
 3. Send any message to the group and read the chat id from `https://api.telegram.org/bot<token>/getUpdates`. Put it in `BUS_TG_CHAT`.
-4. Put the admins' Telegram user ids in `BUS_ADMINS`. For roles seeded in `BUS_TOKENS`, put their owners in `BUS_OWNERS=front:<id>`. Invited roles get their owner automatically.
+4. When the bus starts, it posts a guide to the group and pins it: how to connect, the rules, the commands, how approvals work. It keeps that one message up to date across upgrades. `guide` in the chat posts and pins it again.
+5. Put the admins' Telegram user ids in `BUS_ADMINS`. For roles seeded in `BUS_TOKENS`, put their owners in `BUS_OWNERS=front:<id>`. Invited roles get their owner automatically.
 
 ### 3. Connect each developer's Claude Code
 
@@ -102,6 +103,7 @@ A role is one teammate's Claude: a name (`frontend`, `mobile`, `qa-anna`), how i
 
 | In the group chat | Who | What happens |
 | --- | --- | --- |
+| `guide` | admin | Posts the guide again and pins it. |
 | reply to a newcomer's message with `invite mobile 📱 Mobile` | admin | Creates the role, makes the replied-to person its owner, and posts a one-time code that lives for 24 hours. |
 | `roles` | anyone | Lists roles, their owners, and when each one was last seen. |
 | `remove mobile` | admin | Revokes the role. Its token stops working at once. |
@@ -185,6 +187,9 @@ token, key or password. A shared hook arrives as a file only. Switching it on in
 | `BUS_MAX_HOPS` | `6` | Exchange budget per thread. |
 | `BUS_TG_TOKEN` / `BUS_TG_CHAT` | - | Telegram mirror and controls. |
 | `BUS_OWNERS` | - | `role:telegram-user-id` for seeded roles: who approves setup proposals for them. Invited roles get their owner from the invite. |
+| `BUS_SSH_HOST` | `user@your-server` | The ssh target shown in the pinned guide's connect command. |
+| `BUS_GUIDE_NOTE` | - | Extra HTML appended to the guide, for things specific to your team. |
+| `BUS_GUIDE_MESSAGE_ID` | - | Adopt an existing pinned message as the guide instead of posting a new one. The bot must be its author. |
 | `BUS_LANG` | `en` | Language of the Telegram feed: `en` or `ru`. |
 | `BUS_LABELS` | role name | How seeded roles appear in the feed, for example `front:🔵 <b>Web</b>,back:🟢 <b>API</b>`. Invited roles take the label from the invite. |
 

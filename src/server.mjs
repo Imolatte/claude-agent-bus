@@ -10,6 +10,7 @@ import { registerTools } from './tools.mjs';
 import { notify } from './notify.mjs';
 import { t } from './i18n.mjs';
 import { startTelegram } from './telegram.mjs';
+import { syncGuide } from './guide.mjs';
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -93,6 +94,8 @@ app.get('/api/grant', auth, (req, res) => {
 
 const loaded = init();
 const tg = startTelegram();
+// The pinned guide is the first thing a new group sees and stays current across upgrades.
+syncGuide().catch((error) => console.log(`guide: ${error?.message || error}`));
 app.listen(config.port, config.host, () => {
   console.log(`agent-bus on ${config.host}:${config.port} · ${loaded.events} events, ${loaded.threads} threads · agents: ${[...config.tokens.values()].join(', ')} · telegram: ${tg.polling ? 'on' : 'off'}`);
 });

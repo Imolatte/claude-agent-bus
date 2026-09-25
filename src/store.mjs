@@ -45,7 +45,7 @@ const applyRequest = (event) => {
 
 const apply = (event) => {
   if (event.type.startsWith('proposal')) return applyProposal(event);
-  if (event.type.startsWith('role_')) return undefined;
+  if (event.type.startsWith('role_') || event.type === 'guide') return undefined;
   if (event.type.startsWith('request')) return applyRequest(event);
   const t = thread(event.thread);
   t.lastAt = event.at;

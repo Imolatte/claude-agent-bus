@@ -1,6 +1,7 @@
 import { config, newId } from './config.mjs';
 import { append, getMessage, getProposal, getRequest, lastThread, mirrorTarget, threadState } from './store.mjs';
 import { askReview, decide } from './requests.mjs';
+import { syncGuide } from './guide.mjs';
 import { notify } from './notify.mjs';
 import { t } from './i18n.mjs';
 import { answerCallback, markDecided } from './proposals.mjs';
@@ -93,6 +94,7 @@ const ROLE_COMMANDS = [
   { verb: 'invite', match: new RegExp(`^(invite|пригласи)${END}`, 'i') },
   { verb: 'roles', match: new RegExp(`^(roles|роли)${END}`, 'i') },
   { verb: 'remove', match: new RegExp(`^(remove|убери)${END}`, 'i') },
+  { verb: 'guide', match: new RegExp(`^(guide|справка)${END}`, 'i') },
 ];
 
 const mention = (id) => (id ? `<a href="tg://user?id=${id}">${id}</a>` : null);
@@ -116,6 +118,10 @@ const handleRoleCommand = async (message) => {
   }
   if (!isAdmin(message.from?.id)) {
     await notify(t.onlyAdmins);
+    return true;
+  }
+  if (command.verb === 'guide') {
+    await syncGuide({ repost: true });
     return true;
   }
   if (command.verb === 'remove') {
