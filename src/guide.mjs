@@ -65,7 +65,8 @@ At session start and at the end of the agent's turn. An idle session is not woke
 export const guideText = () => {
   const host = process.env.BUS_SSH_HOST || 'user@your-server';
   const text = (GUIDE[process.env.BUS_LANG] || GUIDE.en)(host);
-  const note = process.env.BUS_GUIDE_NOTE;
+  // An env value can't hold a newline, so the note spells it as \n.
+  const note = process.env.BUS_GUIDE_NOTE?.replace(/\\n/g, '\n');
   return note ? `${text}\n\n${note}` : text;
 };
 
