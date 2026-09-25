@@ -1,0 +1,14 @@
+services:
+  agent-bus:
+    build: .
+    container_name: agent-bus
+    restart: unless-stopped
+    env_file: .env
+    # Published on loopback only: the bus is reached through an ssh tunnel,
+    # never from the open internet.
+    ports:
+      - "127.0.0.1:47830:47830"
+    volumes:
+      - ./data:/data
+    mem_limit: 256m
+    cpus: 0.5

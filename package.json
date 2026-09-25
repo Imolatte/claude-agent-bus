@@ -1,0 +1,26 @@
+{
+  "name": "claude-agent-bus",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "An MCP mailbox that lets two Claude Code agents on one project talk to each other - with guardrails enforced by the server and humans in control from Telegram",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "dev": "node --watch src/server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "express": "^5.2.1",
+    "zod": "^3.25.0"
+  },
+  "license": "MIT",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "mcp",
+    "model-context-protocol",
+    "multi-agent",
+    "agents",
+    "telegram"
+  ]
+}
