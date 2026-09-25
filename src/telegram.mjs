@@ -2,7 +2,8 @@ import { config } from './config.mjs';
 import { append, getMessage, getProposal, lastThread, mirrorTarget, threadState } from './store.mjs';
 import { notify } from './notify.mjs';
 import { t } from './i18n.mjs';
-import { answerCallback, markDecided, ownerOf } from './proposals.mjs';
+import { answerCallback, markDecided } from './proposals.mjs';
+import { invite, isAdmin, listRoles, ownerOf, removeRole } from './roles.mjs';
 
 // Humans steer the bus from the group chat with one word, so the commands are words
 // people actually type - not slash syntax nobody remembers on a phone.
@@ -87,6 +88,54 @@ const handleProposalTap = async (query) => {
   return markDecided(proposal.tgMessageId, `${who}: ${verdict}`);
 };
 
+const ROLE_COMMANDS = [
+  { verb: 'invite', match: new RegExp(`^(invite|пригласи)${END}`, 'i') },
+  { verb: 'roles', match: new RegExp(`^(roles|роли)${END}`, 'i') },
+  { verb: 'remove', match: new RegExp(`^(remove|убери)${END}`, 'i') },
+];
+
+const mention = (id) => (id ? `<a href="tg://user?id=${id}">${id}</a>` : null);
+
+const ago = (at) => {
+  if (!at) return null;
+  const minutes = Math.round((Date.now() - at) / 60000);
+  return minutes < 60 ? `${minutes}m` : `${Math.round(minutes / 60)}h`;
+};
+
+// Team management: anyone may list roles, only admins issue and revoke them.
+const handleRoleCommand = async (message) => {
+  const text = (message.text || '').trim();
+  const command = ROLE_COMMANDS.find(({ match }) => match.test(text));
+  if (!command) return false;
+  const [name, ...rest] = text.replace(command.match, '').trim().split(/\s+/).filter(Boolean);
+  if (command.verb === 'roles') {
+    const lines = listRoles().map((role) => t.roleLine(role.name, mention(role.owner), ago(role.lastSeen), role.isStatic));
+    await notify([t.rolesHead, ...lines].join('\n'));
+    return true;
+  }
+  if (!isAdmin(message.from?.id)) {
+    await notify(t.onlyAdmins);
+    return true;
+  }
+  if (command.verb === 'remove') {
+    const result = removeRole(name);
+    const reply = { static: t.staticRole, unknown: t.unknownRole }[result.error];
+    await notify(reply ? reply(name) : t.removed(name));
+    return true;
+  }
+  const owner = message.reply_to_message?.from;
+  if (!name || !owner || owner.is_bot) {
+    await notify(t.inviteHow);
+    return true;
+  }
+  const who = message.from?.username || message.from?.first_name || 'admin';
+  const result = invite({ role: name.toLowerCase(), label: rest.join(' ') || null, owner: owner.id, by: who });
+  if (result.error === 'bad_name') await notify(t.inviteHow);
+  else if (result.error === 'taken') await notify(t.roleTaken(name));
+  else await notify(t.invited(name.toLowerCase(), result.code));
+  return true;
+};
+
 const handle = async (update) => {
   if (update.callback_query?.data?.startsWith('prop:')) {
     if (String(update.callback_query.message?.chat?.id) === String(config.telegram.chat)) await handleProposalTap(update.callback_query);
@@ -101,6 +150,7 @@ const handle = async (update) => {
     console.log(`ignored message from chat ${message.chat?.id} (${message.chat?.title || message.chat?.type}) - configured: ${config.telegram.chat}`);
     return;
   }
+  if (await handleRoleCommand(message)) return;
   const command = parse(message.text);
   if (!command) return;
   const who = message.from?.username || message.from?.first_name || 'someone';

@@ -27,6 +27,4 @@ export const config = {
   },
 };
 
-export const agentFromToken = (token) => config.tokens.get(token) ?? null;
-
 export const newId = (prefix) => `${prefix}_${randomUUID().slice(0, 12)}`;

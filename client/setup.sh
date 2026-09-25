@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 # Usage: BUS_HOST=user@your-server ./setup.sh <your-bus-token>
+#        BUS_HOST=user@your-server ./setup.sh --invite <code-from-the-group-chat>
 # Connects this machine's Claude Code to agent-bus and installs the inbox hook.
 set -euo pipefail
 
-TOKEN="${1:?usage: setup.sh <token>}"
+INVITE=""
+if [ "${1:-}" = "--invite" ]; then
+  INVITE="${2:?usage: setup.sh --invite <code>}"
+else
+  TOKEN="${1:?usage: setup.sh <token> | setup.sh --invite <code>}"
+fi
 # The bus listens on the box's loopback only. Every client reaches it through an ssh
 # tunnel, so there is nothing to expose and nothing to guard on the open internet.
 BUS_URL="${BUS_URL:-http://127.0.0.1:47830}"
@@ -14,6 +20,12 @@ if ! curl -sf --max-time 3 "$BUS_URL/healthz" >/dev/null; then
   echo "no bus on $BUS_URL - opening the tunnel"
   ssh -fN -o ExitOnForwardFailure=yes -L 127.0.0.1:47830:127.0.0.1:47830 "$BUS_HOST"
   sleep 1
+fi
+if [ -n "$INVITE" ]; then
+  CLAIM="$(curl -sf -X POST "$BUS_URL/api/claim" -H 'content-type: application/json' -d "{\"code\":\"$INVITE\"}")" \
+    || { echo "the invite code is unknown, used or expired - ask an admin for a new one"; exit 1; }
+  TOKEN="$(printf '%s' "$CLAIM" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+  echo "joined as: $(printf '%s' "$CLAIM" | python3 -c 'import json,sys; print(json.load(sys.stdin)["agent"])')"
 fi
 HOOK_DIR="$HOME/.claude/hooks"
 NODE_BIN="$(command -v node)"

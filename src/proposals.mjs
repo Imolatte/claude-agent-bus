@@ -1,5 +1,6 @@
 import { config } from './config.mjs';
 import { label, t } from './i18n.mjs';
+import { ownerOf } from './roles.mjs';
 
 // What one Claude may hand another: its working knowledge, never its permissions.
 // settings.json, MCP configs and anything holding credentials stay out by construction.
@@ -40,15 +41,6 @@ export const validateProposal = ({ files }) => {
   return null;
 };
 
-// Only the human behind the receiving agent can let a change into that agent's setup.
-const owners = new Map(
-  (process.env.BUS_OWNERS || '')
-    .split(',')
-    .map((pair) => pair.trim().split(':'))
-    .filter(([agent, id]) => agent && id),
-);
-
-export const ownerOf = (agent) => owners.get(agent) ?? null;
 
 const esc = (value) =>
   String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

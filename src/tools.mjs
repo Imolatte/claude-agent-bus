@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { config, newId } from './config.mjs';
+import { defaultRecipient, EVERYONE, ownerOf, teammates } from './roles.mjs';
 import { append, getMessage, inbox, listThread, markRead, openThreads, proposalsFor, threadState } from './store.mjs';
-import { announce, ownerOf, validateProposal } from './proposals.mjs';
+import { announce, validateProposal } from './proposals.mjs';
 import { KINDS, validateSend } from './rules.mjs';
 import { mirrorId, notify } from './notify.mjs';
 import { t } from './i18n.mjs';
@@ -9,7 +10,6 @@ import { t } from './i18n.mjs';
 const text = (payload) => ({ content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] });
 const fail = (payload) => ({ ...text(payload), isError: true });
 
-const peer = (agent) => (agent === 'front' ? 'back' : 'front');
 
 const brief = (message) => ({
   id: message.id,
@@ -25,8 +25,19 @@ const brief = (message) => ({
   at: message.at,
 });
 
+const resolveRecipient = (agent, to, { allowEveryone }) => {
+  const others = teammates(agent);
+  const target = to || defaultRecipient(agent);
+  if (target === EVERYONE && allowEveryone) return { to: target };
+  if (target && others.includes(target)) return { to: target };
+  const options = allowEveryone ? [...others, EVERYONE] : others;
+  return { error: `Say who this is for: to must be one of ${options.join(', ')}.` };
+};
+
 export const send = async (agent, input) => {
-  const payload = { ...input, from: agent, to: input.to || peer(agent) };
+  const recipient = resolveRecipient(agent, input.to, { allowEveryone: true });
+  if (recipient.error) return fail({ rejected: 'no_recipient', message: recipient.error });
+  const payload = { ...input, from: agent, to: recipient.to };
   const verdict = validateSend(payload);
 
   if (!verdict.ok) {
@@ -62,18 +73,25 @@ export const send = async (agent, input) => {
     thread: payload.thread,
     exchangesUsed: `${state.hops}/${config.maxHops}`,
     note: verdict.requiresApproval
-      ? 'Marked as needing a write: the other side must get its owner\'s approval before doing it.'
+      ? 'Marked as needing a write: the receiving side must get its owner\'s approval before doing it.'
       : undefined,
   });
 };
 
 export const registerTools = (server, agent) => {
+  const toField = z
+    .string()
+    .nullable()
+    .default(null)
+    .describe(`Who it is for: ${[...teammates(agent), EVERYONE].join(', ')}. Can be left out when you have a single teammate.`);
+
   server.registerTool(
     'bus_send',
     {
-      title: 'Send a message to the other agent',
-      description: `Write to the other Claude (you are "${agent}"). Every question, answer or request must carry at least one new fact - a command output, file:line, a log line, a SHA. Use needs:"write" when you are asking the other side to change something.`,
+      title: 'Send a message to a teammate',
+      description: `Write to a teammate's Claude (you are "${agent}"). Every question, answer or request must carry at least one new fact - a command output, file:line, a log line, a SHA. Use needs:"write" when you are asking the other side to change something.`,
       inputSchema: {
+        to: toField,
         thread: z.string().describe('Ticket key when there is one, otherwise a short stable slug'),
         kind: z.enum(KINDS),
         subject: z.string(),
@@ -142,7 +160,7 @@ export const registerTools = (server, agent) => {
     },
     async ({ thread, reason, question }) => {
       append({ type: 'freeze', thread, reason });
-      append({ type: 'message', id: newId('msg'), thread, from: agent, to: peer(agent), kind: 'escalation', subject: `Escalation: ${reason}`, body: question, facts: [] });
+      append({ type: 'message', id: newId('msg'), thread, from: agent, to: defaultRecipient(agent) || EVERYONE, kind: 'escalation', subject: `Escalation: ${reason}`, body: question, facts: [] });
       await notify(t.escalates(agent, thread, reason, question));
       return text({ escalated: thread, note: 'Thread frozen until a human releases it.' });
     },
@@ -151,24 +169,27 @@ export const registerTools = (server, agent) => {
   server.registerTool(
     'bus_propose',
     {
-      title: 'Offer a piece of your Claude setup to the other agent',
-      description: 'Share a skill, agent, rule or hook that proved useful. The other human sees it in Telegram with the full files and decides; nothing is installed without their tap. Paths are relative to ~/.claude. Never include credentials.',
+      title: "Offer a piece of your Claude setup to a teammate's agent",
+      description: 'Share a skill, agent, rule or hook that proved useful. The receiving human sees it in Telegram with the full files and decides; nothing is installed without their tap. Paths are relative to ~/.claude. Never include credentials.',
       inputSchema: {
+        to: toField,
         title: z.string(),
         what: z.string().describe('What it does, in one or two plain sentences'),
-        why: z.string().describe('Why it is useful to the other side specifically'),
+        why: z.string().describe('Why it is useful to the receiving side specifically'),
         files: z.array(z.object({ path: z.string(), content: z.string() })),
       },
     },
-    async ({ title, what, why, files }) => {
-      const to = peer(agent);
+    async ({ to: requested, title, what, why, files }) => {
+      const recipient = resolveRecipient(agent, requested, { allowEveryone: false });
+      if (recipient.error) return fail({ rejected: 'no_recipient', message: recipient.error });
+      const { to } = recipient;
       const problem = validateProposal({ files });
       if (problem) return fail({ rejected: 'bad_proposal', message: problem });
       if (!ownerOf(to)) return fail({ rejected: 'no_owner', message: `Nobody is registered to approve changes for "${to}" yet.` });
       const proposal = append({ type: 'proposal', id: newId('prop'), from: agent, to, title, what, why, files });
       const tgMessageId = await announce(proposal);
       if (tgMessageId) append({ type: 'proposal_mirror', id: proposal.id, tgMessageId });
-      return text({ proposed: proposal.id, note: 'Waiting for the other human in Telegram.' });
+      return text({ proposed: proposal.id, note: 'Waiting for the receiving human in Telegram.' });
     },
   );
 
@@ -186,6 +207,6 @@ export const registerTools = (server, agent) => {
   server.registerTool(
     'bus_status',
     { title: 'Bus status', description: 'Who you are on this bus, and the state of every thread.', inputSchema: {} },
-    async () => text({ you: agent, peer: peer(agent), maxHops: config.maxHops, threads: openThreads() }),
+    async () => text({ you: agent, teammates: teammates(agent), maxHops: config.maxHops, threads: openThreads() }),
   );
 };

@@ -30,6 +30,7 @@ const applyProposal = (event) => {
 
 const apply = (event) => {
   if (event.type.startsWith('proposal')) return applyProposal(event);
+  if (event.type.startsWith('role_')) return undefined;
   const t = thread(event.thread);
   t.lastAt = event.at;
   if (event.type === 'message') {
@@ -37,9 +38,11 @@ const apply = (event) => {
     t.hops += 1;
     t.participants.add(event.from);
   }
+  // Per reader, because a letter to everyone is read by each teammate separately.
   if (event.type === 'read' || event.type === 'ack') {
     const message = state.messages.get(event.id);
-    if (message) message[event.type === 'read' ? 'readAt' : 'ackedAt'] = event.at;
+    const field = event.type === 'read' ? 'readBy' : 'ackedBy';
+    if (message) message[field] = { ...message[field], [event.by || message.to]: event.at };
   }
   if (event.type === 'hold') t.hold = { by: event.by, note: event.note, at: event.at };
   // Release is the human's way back in, so it lifts both states: a freeze that only the
@@ -92,13 +95,13 @@ export const listThread = (id) =>
 
 export const inbox = (agent, { unreadOnly = true, thread: threadId = null, limit = 20 } = {}) =>
   state.events
-    .filter((event) => event.type === 'message' && event.to === agent)
+    .filter((event) => event.type === 'message' && (event.to === agent || (event.to === 'all' && event.from !== agent)))
     .filter((event) => (threadId ? event.thread === threadId : true))
-    .filter((event) => (unreadOnly ? !event.readAt : true))
+    .filter((event) => (unreadOnly ? !event.readBy?.[agent] : true))
     .slice(-limit);
 
 export const markRead = (messages, agent) =>
-  messages.filter((message) => !message.readAt).map((message) => append({ type: 'read', id: message.id, thread: message.thread, by: agent }));
+  messages.filter((message) => !message.readBy?.[agent]).map((message) => append({ type: 'read', id: message.id, thread: message.thread, by: agent }));
 
 export const getMessage = (id) => state.messages.get(id) ?? null;
 
@@ -117,3 +120,5 @@ export const getProposal = (id) => state.proposals.get(id) ?? null;
 
 export const proposalsFor = (agent, status) =>
   [...state.proposals.values()].filter((proposal) => proposal.to === agent && (!status || proposal.status === status));
+
+export const eventsOf = (types) => state.events.filter((event) => types.includes(event.type));

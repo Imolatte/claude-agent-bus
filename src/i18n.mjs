@@ -1,6 +1,9 @@
+import { roleLabel } from './roles.mjs';
+
 // Everything a human reads in the chat. Agents get English from the tools either way.
 const STRINGS = {
   en: {
+    everyone: '👥 everyone',
     kind: { question: 'question', answer: 'answer', request: 'request', fyi: 'fyi', escalation: '🚨 escalation' },
     needsApproval: '⚠ <b>needs approval</b> - reply «go»',
     budgetSpent: (thread, why) => `⏳ Thread ${thread}: ${why}. Only an escalation is left.`,
@@ -32,8 +35,18 @@ const STRINGS = {
     declined: 'Declined.',
     verdictApply: '✅ installs on the next session start',
     verdictDecline: '✖️ declined',
+    onlyAdmins: 'Only an admin can do that.',
+    inviteHow: 'Reply to the new teammate\'s message: invite <role> [label]. Role: lowercase letters, digits, dashes.',
+    roleTaken: (role) => `Role ${role} already exists.`,
+    invited: (role, code) => `🎟 Role <b>${role}</b> is ready. On their machine:\n<code>BUS_HOST=user@server ./client/setup.sh --invite ${code}</code>\nThe code works once, for 24 hours.`,
+    rolesHead: 'Roles:',
+    roleLine: (name, owner, seen, isStatic) => `· <b>${name}</b>${isStatic ? ' (config)' : ''} - owner ${owner || 'none'}, ${seen ? `seen ${seen}` : 'not seen since restart'}`,
+    removed: (role) => `🗑 Role ${role} removed, its token no longer works.`,
+    staticRole: (role) => `${role} comes from the server config - remove it there.`,
+    unknownRole: (role) => `No role ${role}.`,
   },
   ru: {
+    everyone: '👥 всем',
     kind: { question: 'вопрос', answer: 'ответ', request: 'просьба', fyi: 'к сведению', escalation: '🚨 эскалация' },
     needsApproval: '⚠ <b>нужно согласие</b> - ответь «делай»',
     budgetSpent: (thread, why) => `⏳ Тред ${thread}: ${why}. Осталась только эскалация.`,
@@ -65,6 +78,15 @@ const STRINGS = {
     declined: 'Отклонено.',
     verdictApply: '✅ применится при следующем запуске сессии',
     verdictDecline: '✖️ отклонено',
+    onlyAdmins: 'Это может только админ.',
+    inviteHow: 'Ответь на сообщение нового человека: пригласи <роль> [подпись]. Роль: строчные латинские буквы, цифры, дефис.',
+    roleTaken: (role) => `Роль ${role} уже есть.`,
+    invited: (role, code) => `🎟 Роль <b>${role}</b> готова. На его машине:\n<code>BUS_HOST=user@server ./client/setup.sh --invite ${code}</code>\nКод одноразовый, живёт сутки.`,
+    rolesHead: 'Роли:',
+    roleLine: (name, owner, seen, isStatic) => `· <b>${name}</b>${isStatic ? ' (из конфига)' : ''} - хозяин ${owner || 'нет'}, ${seen ? `был ${seen}` : 'не заходил с перезапуска'}`,
+    removed: (role) => `🗑 Роль ${role} удалена, её токен больше не работает.`,
+    staticRole: (role) => `${role} задана в конфиге сервера - убирать там.`,
+    unknownRole: (role) => `Роли ${role} нет.`,
   },
 };
 
@@ -80,6 +102,10 @@ const labels = new Map(
     .filter(([agent, text]) => agent && text),
 );
 
-const DEFAULT_LABELS = { front: '🔵 <b>front</b>', back: '🟢 <b>back</b>' };
+const escape = (value) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-export const label = (agent) => labels.get(agent) || DEFAULT_LABELS[agent] || agent;
+export const label = (agent) => {
+  if (agent === 'all') return t.everyone;
+  const issued = roleLabel(agent);
+  return labels.get(agent) || (issued && escape(issued)) || `<b>${agent}</b>`;
+};

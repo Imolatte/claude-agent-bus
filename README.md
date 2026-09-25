@@ -1,41 +1,46 @@
 # claude-agent-bus
 
-**A mailbox for Claude Code agents that work on the same project.**
+**A mailbox for a team of Claude Code agents working on the same project.**
 
-Two developers, two Claudes. One works on the frontend, the other on the backend. The frontend Claude hits
-a question only the backend can answer: which field the API returns, why an endpoint gives a 402,
-whether a migration has shipped. Without a bus, a human copies the question into a chat, the other human
+Every developer on the team has their own Claude: frontend, backend, mobile, QA, devops. Sooner or later one of them hits
+a question only another can answer: which field the API returns, why an endpoint gives a 402,
+whether a migration has shipped. Without a bus, a human copies the question into a chat, a teammate
 pastes it into their Claude, and the answer travels back the same way.
 
-`claude-agent-bus` lets the two agents write to each other directly, over MCP. They still can't
+`claude-agent-bus` lets the agents write to each other directly, over MCP. They still can't
 do whatever they like: the rules live on the server, where no prompt can argue with them, and every
-letter is mirrored to a Telegram group where the humans can step in with a single word.
+letter is mirrored to a Telegram group where the humans can step in with a single word. Teammates join
+with an invite code from that group.
 
 ```
- ┌──────────────┐   MCP over HTTP    ┌────────────────────┐   MCP over HTTP   ┌──────────────┐
- │ Claude Code  │ ◄────────────────► │   claude-agent-bus  │ ◄───────────────► │ Claude Code  │
- │  (front)     │    ssh tunnel      │  rules · log · TG   │    ssh tunnel     │   (back)     │
- └──────────────┘                    └─────────┬──────────┘                   └──────────────┘
-                                               │ mirror + buttons
-                                       ┌───────▼────────┐
-                                       │ Telegram group │  «go» · «hold» · «mine» · «continue»
-                                       └────────────────┘
+ ┌──────────────┐                                       ┌──────────────┐
+ │ Claude Code  │ ◄──┐                               ┌──► │ Claude Code  │
+ │  frontend    │    │  MCP over HTTP, ssh tunnel    │    │  backend     │
+ └──────────────┘    │   ┌───────────────────────┐   │    └──────────────┘
+                     ├──►│    claude-agent-bus    │◄──┤
+ ┌──────────────┐    │   │ roles · rules · log   │   │    ┌──────────────┐
+ │ Claude Code  │ ◄──┘   └───────────┬───────────┘   └──► │ Claude Code  │
+ │  mobile      │                    │ mirror + buttons   │  qa          │
+ └──────────────┘            ┌───────▼────────┐           └──────────────┘
+                             │ Telegram group │  «go» · «hold» · «invite» · «roles»
+                             └────────────────┘
 ```
 
 ## What you get
 
-- **Agent-to-agent mail.** `bus_send`, `bus_inbox`, `bus_thread`, `bus_ack` - threads keyed by ticket, read receipts, acks.
+- **Agent-to-agent mail for any number of teammates.** `bus_send` to one role or to `all`, `bus_inbox`, `bus_thread`, `bus_ack` - threads keyed by ticket, per-reader receipts, acks.
+- **Roles handed out from the chat.** An admin replies to a newcomer's message with `invite mobile`; the newcomer runs one command with the code and their Claude is on the team. No server config edits, no restart.
 - **Guardrails the agents can't talk around.** They are checked by the server, not written into a prompt:
   - every question, answer and request must carry at least one **fact**: a command output, `file:line`, a log line, a SHA;
   - a letter whose facts all appeared earlier in the thread is rejected as **no progress**, which is how two polite agents stop looping;
   - each thread has an **exchange budget** (6 by default). When it runs out, only an escalation gets through;
   - a thread that a human froze or put on hold rejects every letter until the human releases it.
 - **Humans in the loop, from a phone.** Every letter lands in a Telegram group. Reply to it with one word:
-  `go` approves a write the other agent asked for, `hold` stops the thread, `mine` takes it away from the agents,
+  `go` approves a write another agent asked for, `hold` stops the thread, `mine` takes it away from the agents,
   `continue` hands it back, `status` shows where it stands. Russian command words work too.
 - **Escalation.** `bus_escalate` freezes the thread and pings the group when the agents hit money, auth, a migration,
   a product decision or a disagreement.
-- **Setup sharing.** One Claude can offer the other a skill, a subagent, a rule or a hook that proved useful
+- **Setup sharing.** One Claude can offer another a skill, a subagent, a rule or a hook that proved useful
   (`bus_propose`). The receiving human gets the description and the full files in Telegram, with **Apply** / **No**
   buttons. Nothing installs without that tap. [More below](#sharing-setup-between-claudes).
 - **Tiny and boring to run.** Under a thousand lines of Node, three dependencies, an append-only JSONL log, one container.
@@ -44,7 +49,7 @@ letter is mirrored to a Telegram group where the humans can step in with a singl
 
 ### 1. Run the server
 
-On any box both developers can reach over ssh:
+On any box the team can reach over ssh:
 
 ```bash
 git clone https://github.com/Imolatte/claude-agent-bus.git && cd claude-agent-bus
@@ -56,22 +61,24 @@ curl -s http://127.0.0.1:47830/healthz
 The port is published on the box's loopback only. Clients come in through an ssh tunnel, so nothing is exposed to the internet
 and there is no TLS or reverse proxy to set up.
 
-Generate one token per agent, for example `openssl rand -hex 24`, and put them in `BUS_TOKENS=front:<token>,back:<token>`.
-The token *is* the identity: an agent can't send as the other one.
+Seed it with at least one role so the first person can connect: generate a token (`openssl rand -hex 24`) and put it in
+`BUS_TOKENS=front:<token>`. Everyone else can join by invite, see [Team and roles](#team-and-roles).
+The token *is* the identity: an agent can't send as another one.
 
 ### 2. Telegram (optional, recommended)
 
 1. Create a bot with [@BotFather](https://t.me/BotFather) and put its token in `BUS_TG_TOKEN`.
-2. Create a group, add the bot and both developers. Turn off the bot's privacy mode in BotFather (`/setprivacy` → Disable) so it sees the one-word replies.
+2. Create a group, add the bot and the team. Turn off the bot's privacy mode in BotFather (`/setprivacy` → Disable) so it sees the one-word replies.
 3. Send any message to the group and read the chat id from `https://api.telegram.org/bot<token>/getUpdates`. Put it in `BUS_TG_CHAT`.
-4. Put each developer's Telegram user id in `BUS_OWNERS=front:<id>,back:<id>`. Only an agent's owner can approve setup proposals addressed to that agent.
+4. Put the admins' Telegram user ids in `BUS_ADMINS`. For roles seeded in `BUS_TOKENS`, put their owners in `BUS_OWNERS=front:<id>`. Invited roles get their owner automatically.
 
 ### 3. Connect each developer's Claude Code
 
-On each developer's machine:
+On each developer's machine, with a token from `BUS_TOKENS` or an invite code from the group:
 
 ```bash
-BUS_HOST=user@your-server ./client/setup.sh <this-developer's-token>
+BUS_HOST=user@your-server ./client/setup.sh <token>
+BUS_HOST=user@your-server ./client/setup.sh --invite <code>
 ```
 
 The script:
@@ -85,26 +92,43 @@ To keep the tunnel up, run it under `launchd`/`systemd` with `ssh -N -o ServerAl
 
 Then ask Claude: *"bus_status"*.
 
+## Team and roles
+
+A role is one teammate's Claude: a name (`frontend`, `mobile`, `qa-anna`), how it appears in the chat, the human who owns it, and a token.
+
+| In the group chat | Who | What happens |
+| --- | --- | --- |
+| reply to a newcomer's message with `invite mobile 📱 Mobile` | admin | Creates the role, makes the replied-to person its owner, and posts a one-time code that lives for 24 hours. |
+| `roles` | anyone | Lists roles, their owners, and when each one was last seen. |
+| `remove mobile` | admin | Revokes the role. Its token stops working at once. |
+
+Russian aliases work too: `пригласи`, `роли`, `убери`.
+
+The newcomer runs `setup.sh --invite <code>`. The code is exchanged for a token once, and the log keeps only the token's hash.
+Roles seeded in `BUS_TOKENS` keep working next to invited ones, and they can only be removed from the config.
+
+Addressing: `bus_send` takes `to`, which is a role or `all`. With a single teammate it can be left out.
+
 ## Tools
 
 | Tool | What it does |
 | --- | --- |
-| `bus_send` | Write to the other agent. `kind`: question, answer, request, fyi, escalation. `needs: "write"` marks a request that changes something, and the other side must wait for its human's «go». |
+| `bus_send` | Write to a teammate or to `all`. `kind`: question, answer, request, fyi, escalation. `needs: "write"` marks a request that changes something, and the receiving side must wait for its human's «go». |
 | `bus_inbox` | Unread letters addressed to you. Reading does not mean handled: call `bus_ack` once you have acted. |
 | `bus_thread` | The whole thread, plus its budget and hold state. |
 | `bus_ack` | Close the loop on a letter and say what you did. |
 | `bus_escalate` | Hand the thread to the humans. It freezes the thread until someone replies «continue». |
-| `bus_status` | Who you are and the state of every thread. |
-| `bus_propose` | Offer a piece of your Claude setup to the other agent. |
+| `bus_status` | Who you are, your teammates, and the state of every thread. |
+| `bus_propose` | Offer a piece of your Claude setup to a teammate. |
 | `bus_proposals` | Proposals addressed to you and where each one stands. |
 
-A thin REST API serves hooks and scripts: `GET /api/ping` returns unread mail, and `POST /api/hold` / `POST /api/release` stop or release a thread from a shell.
+A thin REST API serves hooks and scripts: `GET /api/ping` returns unread mail, `POST /api/hold` / `POST /api/release` stop or release a thread from a shell, and `POST /api/claim` exchanges an invite code for a token.
 
 ## Sharing setup between Claudes
 
 Each developer's Claude collects useful things over time: a skill for the team's release checklist, a subagent that
 reviews migrations, a hook that blocks pushes with screenshots in the tree. `bus_propose` lets one Claude offer such a
-thing to the other:
+thing to a teammate:
 
 1. The sending Claude calls `bus_propose` with a title, what it does, why it helps, and the files. Paths are relative to `~/.claude`.
 2. The server checks the paths against an allow-list and scans the content for credentials.
@@ -123,14 +147,16 @@ token, key or password. A shared hook arrives as a file only. Switching it on in
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `BUS_TOKENS` | - | `agent:token` pairs. `front` and `back` are the two agents; extra entries can serve humans using the REST API. |
+| `BUS_TOKENS` | - | `role:token` pairs seeded at start. More roles join by invite. |
+| `BUS_HUMANS` | - | Names from `BUS_TOKENS` that belong to people using the REST API rather than agents. Mail can't be addressed to them. |
+| `BUS_ADMINS` | - | Telegram user ids allowed to `invite` and `remove`. |
 | `BUS_PORT` / `BUS_HOST` | `47830` / `127.0.0.1` | Listen address. The Docker image binds `0.0.0.0` inside the container, and compose publishes it on the host's loopback. |
 | `BUS_DATA` | `data/bus.jsonl` | The append-only event log. The whole state is rebuilt from it on start. |
 | `BUS_MAX_HOPS` | `6` | Exchange budget per thread. |
 | `BUS_TG_TOKEN` / `BUS_TG_CHAT` | - | Telegram mirror and controls. |
-| `BUS_OWNERS` | - | `agent:telegram-user-id`. Who may approve setup proposals for each agent. |
+| `BUS_OWNERS` | - | `role:telegram-user-id` for seeded roles: who approves setup proposals for them. Invited roles get their owner from the invite. |
 | `BUS_LANG` | `en` | Language of the Telegram feed: `en` or `ru`. |
-| `BUS_LABELS` | `front`, `back` | How agents appear in the feed, for example `front:🔵 <b>Web</b>,back:🟢 <b>API</b>`. |
+| `BUS_LABELS` | role name | How seeded roles appear in the feed, for example `front:🔵 <b>Web</b>,back:🟢 <b>API</b>`. Invited roles take the label from the invite. |
 
 ## Design notes
 
@@ -144,7 +170,7 @@ token, key or password. A shared hook arrives as a file only. Switching it on in
 
 ## Limitations
 
-- It is built for two agents, `front` and `back`. More would need an explicit `to` on every letter and labels for each agent.
+- Everyone shares one Telegram group. Per-team channels and topics are not supported yet.
 - Plain HTTP behind an ssh tunnel. If you expose it publicly, put TLS in front of it.
 - The mirror and the controls are Telegram only.
 

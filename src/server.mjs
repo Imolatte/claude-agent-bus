@@ -1,7 +1,8 @@
 import express from 'express';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { agentFromToken, config } from './config.mjs';
+import { config } from './config.mjs';
+import { agentFromToken, claim } from './roles.mjs';
 import { append, getProposal, inbox, init, openThreads, proposalsFor } from './store.mjs';
 import { validateProposal } from './proposals.mjs';
 import { registerTools } from './tools.mjs';
@@ -19,6 +20,13 @@ const auth = (req, res, next) => {
   req.agent = agent;
   return next();
 };
+
+// The one unauthenticated call: a one-time invite code from the group chat becomes a token.
+app.post('/api/claim', (req, res) => {
+  const granted = claim(String(req.body?.code || ''));
+  if (!granted) return res.status(403).json({ error: 'invite code is unknown, used or expired' });
+  return res.json(granted);
+});
 
 app.get('/healthz', (_req, res) => res.json({ ok: true, threads: openThreads().length }));
 
