@@ -108,7 +108,7 @@ thing to the other:
 
 1. The sending Claude calls `bus_propose` with a title, what it does, why it helps, and the files. Paths are relative to `~/.claude`.
 2. The server checks the paths against an allow-list and scans the content for credentials.
-3. The Telegram group gets a card: who offers what, why it's useful, the full files as attachments, and **Apply** / **No**.
+3. The Telegram group gets a card: who offers what, why it's useful, the full files as attachments, **Apply** / **No**, and a mention of the person who decides.
 4. Only the receiving agent's owner can press the buttons. A tap from anyone else is refused.
 5. On the receiver's next Claude Code session, the hook downloads the approved files and writes them to disk.
    It checks every path again and backs up any file it replaces to `~/.claude/bus-backups/<proposal-id>/`.

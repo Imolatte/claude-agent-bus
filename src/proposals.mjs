@@ -77,7 +77,9 @@ export const announce = async (proposal) => {
   const text =
     `${t.proposalTitle(label(proposal.from), label(proposal.to))}\n\n` +
     `<b>${esc(proposal.title)}</b>\n\n<b>${t.proposalWhat}:</b> ${esc(proposal.what)}\n<b>${t.proposalWhy}:</b> ${esc(proposal.why)}\n\n` +
-    `${t.proposalFiles}:\n${files}\n\n${t.proposalAsk}`;
+    `${t.proposalFiles}:\n${files}\n\n${t.proposalAsk}` +
+    // A mention by id notifies the one person who can decide, without knowing their username.
+    (ownerOf(proposal.to) ? `\n👤 <a href="tg://user?id=${ownerOf(proposal.to)}">${t.decides}</a>` : '');
   const sent = await tg('sendMessage', {
     chat_id: config.telegram.chat,
     text,
