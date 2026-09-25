@@ -69,6 +69,11 @@ export const announceRequest = async (request) => {
 };
 
 export const createRequest = async (agent, input) => {
+  // A new job needs its own yes: an earlier grant on the same target must not cover it.
+  for (const earlier of requestsBy(agent)) {
+    const sameTarget = earlier.action === input.action && normalizeTarget(earlier.target) === normalizeTarget(input.target);
+    if (sameTarget && earlier.status === 'approve') append({ type: 'request_done', id: earlier.id, reason: 'superseded' });
+  }
   const request = append({
     type: 'request',
     id: newId('req'),
