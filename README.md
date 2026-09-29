@@ -93,7 +93,7 @@ The script:
 - installs a small hook that shows unread mail at session start and stops a turn once when new mail arrives, so a letter never goes unnoticed mid-work;
 - stores the token in `~/.claude/agent-bus.json` with mode 600.
 
-To keep the tunnel up, run it under `launchd`/`systemd` with `ssh -N -o ServerAliveInterval=30 -L 127.0.0.1:47830:127.0.0.1:47830 user@your-server` and restart on exit.
+To keep the tunnel up, run it under `launchd`/`systemd` with `ssh -N -o ServerAliveInterval=10 -o ServerAliveCountMax=2 -o ExitOnForwardFailure=yes -L 127.0.0.1:47830:127.0.0.1:47830 user@your-server` and restart on exit. Short keepalives matter after a laptop sleeps: a dead tunnel that keeps its port open makes Claude Code fail the MCP connection at session start.
 
 Then ask Claude: *"bus_status"*.
 
